@@ -1,0 +1,32 @@
+database:
+  dialect: sqlite
+  username: None
+  password: None
+  host: None
+  port: None
+  database: 'blue_the_ripper.db'
+
+ripper:
+  executable: "makemkvcon.exe"
+  minLength: 900
+  rip_dir: "raw"
+
+identifier:
+  series:
+    api_key:
+    user_key:
+    user_name:
+    host: "https://api.thetvdb.com"
+
+converter:
+  executable: "HandBrakeCLI.exe"
+  minLength: 900
+  compress_directory: in_progress
+  preset: "HQ 1080p30 Surround"
+  container: "mp4"
+  encoder: "x264"
+  encoder_options: '--x264-preset="veryslow" --x264-tune="film" --x264-profile="main"'
+  quality: 21
+  series:
+    file_name_template: "{series}/Season {season}/{series} S{season:02d}E{episode:02d} - {title} {quality}-{source}"
+    output_directory: series
