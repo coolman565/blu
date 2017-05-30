@@ -1,3 +1,4 @@
+import logging
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -15,10 +16,16 @@ class Singleton(type):
 
 
 class Sqlite(metaclass=Singleton):
-    session = None
     base = declarative_base()
 
     def __init__(self, config: Config):
-        self.engine = create_engine(config.database.get_connection_string())
-        self.base.metadata.create_all(self.engine)
-        self.session = sessionmaker(bind=self.engine)()
+        self.log = logging.getLogger(__name__)
+        self.session = None
+        try:
+            self.log.debug("Connecting to database: - %s", config.database.get_connection_string())
+            self.engine = create_engine(config.database.get_connection_string())
+            self.base.metadata.create_all(self.engine)
+            self.session = sessionmaker(bind=self.engine)()
+        except:
+            self.log.error("Failed to connect to database", exc_info=True)
+            raise

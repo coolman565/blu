@@ -22,6 +22,7 @@ class MakeMKV():
         self.minLength = config.ripper.minLength
         self.rip_dir = config.ripper.rip_dir
         self.db = Sqlite(config)
+        self.log = logging.getLogger(__name__)
 
     info_map = {
         "0": "unknown",
@@ -54,7 +55,9 @@ class MakeMKV():
     }
 
     def scan_discs(self):
+        self.log.info("Searching for discs")
         command = "{} -r info disc:-1".format(self.executable)
+        self.log.debug(command)
 
         proc = subprocess.Popen(
             command,
@@ -67,7 +70,6 @@ class MakeMKV():
 
         if proc.returncode or error is not None and len(error) > 0:
             logging.error("MakeMKV disc scan failed")
-            logging.debug("Command: ", command)
             logging.debug(error)
         else:
             resultSet = result.decode('unicode_escape').split(linesep)
@@ -93,6 +95,10 @@ class MakeMKV():
                                      and (disc.name == disc_details.nice_title),
                         series.discs))
 
+                    other_disc_list = list(filter(
+                        lambda disc: (disc.title != disc_details.disc_title) and (disc.name == disc_details.nice_title),
+                        series.discs))
+
                     if len(disc) == 0:
                         disc = Disc(
                             name=disc_details.nice_title,
@@ -107,36 +113,33 @@ class MakeMKV():
                     else:
                         disc = disc[0]
 
-                    current_episode_count = len(disc_details.episodes)
+                    current_episode_count = 0
+                    for disc in other_disc_list:
+                        current_episode_count = current_episode_count + len(disc.title)
                     for index, episode in enumerate(disc_details.episodes):
-                        series_episode = list(filter(
-                            lambda existing_episode: (existing_episode.number == index + 1),
-                            series.episodes))
-
-                        if len(series_episode) == 0:
-                            series_episode = Episode(
-                                bytes=episode['bytes'],
-                                duration=self._to_epoch_time(episode['duration']),
-                                file_name=episode['file_name'],
-                                f_name=episode['fname'],
-                                frame_rate=float(episode['frame_rate'].split()[0]),
-                                lang=episode['lang'],
-                                lang_code=episode['lang_code'],
-                                stream_id=episode['stream_id'],
-                                title=episode['title'],
-                                title_id=episode['title_id'],
-                                video_size=episode['video_size'],
-                                number=(current_episode_count + index + 1),
-                                status=Status.SCANNED
-                            )
-                            disc.titles.append(series_episode)
-                            series.episodes.append(series_episode)
+                        series_episode = Episode(
+                            bytes=episode['bytes'],
+                            duration=self._to_epoch_time(episode['duration']),
+                            file_name=episode['file_name'],
+                            f_name=episode['fname'],
+                            frame_rate=float(episode['frame_rate'].split()[0]),
+                            lang=episode['lang'],
+                            lang_code=episode['lang_code'],
+                            stream_id=episode['stream_id'],
+                            title=episode['title'],
+                            title_id=episode['title_id'],
+                            video_size=episode['video_size'],
+                            number=(current_episode_count + index + 1),
+                            status=Status.SCANNED
+                        )
+                        disc.titles.append(series_episode)
+                        series.episodes.append(series_episode)
 
                     self.db.session.commit()
                 elif disc_details.media_type is MediaType.MOVIE:
                     pass
                 else:
-                    logging.error("Unknown MediaType: ", disc_details.media_type)
+                    logging.error("Unknown MediaType: %s", disc_details.media_type)
 
             return details_list
 
@@ -171,7 +174,7 @@ class MakeMKV():
             elif details.media_type is MediaType.MOVIE:
                 pass
             else:
-                logging.error("Unknown Media Type: ", details.media_type)
+                logging.error("Unknown Media Type: %s", details.media_type)
             details.nice_title = self._get_nice_title(details.disc_title)
         return disc_details_list
 
@@ -210,6 +213,8 @@ class MakeMKV():
 
     def scan(self, disc: Media) -> Media:
         command = "{} -r info disc:{} --minlength={}".format(self.executable, disc.disc_id, self.minLength)
+        self.log.debug(command)
+
         proc = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
@@ -220,7 +225,6 @@ class MakeMKV():
 
         if error is not None and len(error) > 0:
             logging.error("MakeMKV scan failed")
-            logging.debug("Command: ", command)
             logging.debug(error)
 
         resultSet = result.decode('unicode_escape').split(linesep)
@@ -260,6 +264,7 @@ class MakeMKV():
 
         command = '{} -r mkv disc:{} all "{}" --noscan --minlength={} --decrypt --directio={}' \
             .format(self.executable, disc_id, directory, self.minLength, "true")
+        logging.debug(command)
 
         proc = subprocess.Popen(
             command,
@@ -272,7 +277,6 @@ class MakeMKV():
 
         if error is not None and len(error) > 0:
             logging.error("MakeMKV scan failed")
-            logging.debug("Command: ", command)
             logging.debug(error)
             return False
 

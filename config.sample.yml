@@ -4,10 +4,10 @@ database:
   password: None
   host: None
   port: None
-  database: 'blue_the_ripper.db'
+  database: blu
 
 ripper:
-  executable: "makemkvcon.exe"
+  executable: makemkvcon.exe
   minLength: 900
   rip_dir: "raw"
 
@@ -19,7 +19,7 @@ identifier:
     host: "https://api.thetvdb.com"
 
 converter:
-  executable: "HandBrakeCLI.exe"
+  executable: HandBrakeCLI.exe
   minLength: 900
   compress_directory: in_progress
   preset: "HQ 1080p30 Surround"

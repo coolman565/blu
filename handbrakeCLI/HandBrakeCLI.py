@@ -11,6 +11,7 @@ from database.domain.title import Status
 
 class HandBrakeCLI:
     def __init__(self, config: Config):
+        self.log = logging.getLogger(__name__)
         self.executable = config.converter.executable
         self.minLength = config.converter.minLength
         self.series_directory = config.converter.series.output_directory
@@ -21,72 +22,6 @@ class HandBrakeCLI:
         self.encoder_options = config.converter.encoder_options
         self.quality = config.converter.quality
         self.db = Sqlite(config)
-
-    def scan(self, input):
-        handBrakeCliPath = ""
-        command = "HandBrakeCLI.exe --input {0} --title 0".format(input)
-        command = os.path.join(self.handBrakeCliPath, command)
-        proc = subprocess.Popen(
-            command,
-            stderr=subprocess.STDOUT,
-            stdout=subprocess.PIPE,
-            shell=True
-        )
-
-        (result, error) = proc.communicate()
-
-        if error is not None and len(error) is not 0:
-            logging.error('HandBrakeCLI scan failed')
-            return
-
-        resultSet = result.decode('unicode_escape').split(os.linesep)
-
-        titleLines = []
-        episode = int(0)
-        filesToCompress = []
-
-        for line in resultSet:
-            if line is not None and len(line) > 0 and line[0] == '+':
-                for titleLine in titleLines:
-                    if re.fullmatch(r'\s*\+\s+title\s+(\d+):.*', titleLine) is not None:
-                        title = re.sub(r'\s*\+\s+title\s+(\d+):.*', r'\1', titleLine, re.IGNORECASE)
-                    if re.fullmatch(r'\s*\+\s+duration:\s*(.*)', titleLine) is not None:
-                        h, m, s = re.sub(r'\s*\+\s+duration:\s*(.*)', r'\1', titleLine, re.IGNORECASE).split(':')
-                        duration = int(h) * 3600 + int(m) * 60 + int(s)
-                    if re.match(r'\s*\+\s+size:\s*(.*)', titleLine) is not None:
-                        x, y = re.sub(r'\s*\+\s+size:\s*(.+?),.*', r'\1', titleLine, re.IGNORECASE).split('x')
-                        size = {x, y}
-                    if re.fullmatch(r'\s*\+\s+playlist:\s*(.*)', titleLine) is not None:
-                        playlist = re.sub(r'\s*\+\s+playlist:\s*(.*)', r'\1', titleLine, re.IGNORECASE)
-
-                if len(titleLines) >= 3 and duration > self.minLength:
-                    episode += 1
-                    print("episode: {} title: {}, duration: {}, playlist: {}, playlist: {}".format(episode, title,
-                                                                                                   duration, playlist,
-                                                                                                   size))
-                    # filesToCompress.append({title, duration, size, episode})
-
-                    command = "HandBrakeCLI.exe --input F:\\Video\\backup\\FRIENDS_SEASON_6_DISC_1 --title {} --output F:\\Video\\completed\\friends_S06E{}.mp4 --preset=\"Very Fast 1080p30\"" \
-                        .format(title, episode)
-                    command = os.path.join(self.handBrakeCliPath, command)
-
-                    proc = subprocess.Popen(
-                        command,
-                        stderr=subprocess.STDOUT,
-                        stdout=subprocess.PIPE,
-                        shell=True
-                    )
-
-                    (result, error) = proc.communicate()
-                    if error is not None and len(error) is not 0:
-                        logging.error('HandBrakeCLI scan failed')
-                        logging.debug(result)
-                titleLines = []
-
-            if line is not None and len(line) > 0 and line.lstrip(' ')[0] == '+':
-                titleLines.append(line)
-
-        return filesToCompress
 
     def compress_files(self, input_list, output_directory, output_filename_template):
         for index, input in enumerate(input_list):
@@ -122,16 +57,18 @@ class HandBrakeCLI:
                 if self.compress_file(input=file.raw_file, output=output):
                     file.status = Status.COMPRESSED
                     file.compressed_file = output
+                    self.db.session.commit()
+                else:
+                    self.log.warning("Failed to compress file: %s", file.raw_file)
             elif file.type == 'movies':
                 pass
             else:
-                logging.error("Unknown Media Type: ", file.type)
-            pass
+                self.log.error("Unknown Media Type: %s", file.type)
         self.db.session.commit()
 
     def compress_file(self, input, output):
         if not os.path.exists(input):
-            logging.error("Input does not exist: '" + input + "'")
+            self.log.error("Input does not exist: '" + input + "'")
             return False
 
         if not os.path.exists(os.path.dirname(output)):
@@ -140,11 +77,12 @@ class HandBrakeCLI:
         command = '{} --verbose --input="{}" --output="{}" --preset="{}" --encoder="{}" {} --quality={} --optimize --two-pass --turbo --markers' \
             .format(self.executable,
                     input,
-                    "{}.{}".format(output, format),
+                    "{}.{}".format(output, self.container),
                     self.preset,
                     self.encoder,
                     self.encoder_options,
                     self.quality)
+        self.log.debug(command)
 
         proc = subprocess.Popen(
             command,
@@ -156,7 +94,7 @@ class HandBrakeCLI:
         (result, error) = proc.communicate()
 
         if proc.returncode is not 0:
-            logging.error("Subprocess returned: ", proc.returncode)
+            self.log.error("Subprocess returned: %d", proc.returncode)
             return False
 
         return True

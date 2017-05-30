@@ -1,3 +1,5 @@
+import logging
+
 from config import Config
 from database import Sqlite
 from database.domain import Series, Episode
@@ -7,6 +9,7 @@ from .theTVDB_API import TVDB_API
 
 class Identify():
     def __init__(self, config: Config):
+        self.log = logging.getLogger(__name__)
         self.tvdb_api = TVDB_API(config.identifier.series)
         self.db = Sqlite(config)
 
@@ -26,6 +29,8 @@ class Identify():
                 episode_details = self._get_episode_by_number(episode.number, episode_data)
                 if episode_details is not None:
                     episode.title = episode_details['episodeName']
+                else:
+                    self.log.warning("Failed to find matching episode")
 
         self.db.session.commit()
 
